@@ -1,3 +1,12 @@
+list:
+  #!/usr/bin/env bash
+  echo -e "Listing all short links:\n"
+  column -t -s '->' <<< "$(find _l -type f -name "*.md" | while read -r file; do
+    shortlink=$(basename "${file}" .md)
+    url=$(grep 'goto:' "${file}" | cut -d ' ' -f2-)
+    echo "${shortlink} -> ${url}"
+  done)"
+
 add url:
   #!/usr/bin/env bash
   url="{{url}}"
