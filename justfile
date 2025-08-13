@@ -1,43 +1,84 @@
+shortlink_domain := `echo "https://$(head -n1 CNAME)"`
+shortlink_url_path := `yq '.collections | keys[0]' < _config.yml`
+shortlink_dir := "_" + shortlink_url_path
+
+default:
+  @echo "Available commands:"
+  @echo "  list: List all shortlinks"
+  @echo "  add <url>: Add a new shortlink"
+  @echo "  rm <shortlink>: Remove a shortlink"
+
 list:
   #!/usr/bin/env bash
-  echo -e "Listing all short links:\n"
-  column -t -s '->' <<< "$(find _l -type f -name "*.md" | while read -r file; do
-    shortlink=$(basename "${file}" .md)
-    url=$(grep 'goto:' "${file}" | cut -d ' ' -f2-)
-    echo "${shortlink} -> ${url}"
+  column -t -s '|' <<< "$(find {{shortlink_dir}} -type f -name "*.md" | while read -r file; do
+    shortlink="$(basename "${file}" .md)"
+    url="$(grep 'goto:' "${file}" | cut -d ' ' -f2-)"
+    shortlink_url="{{shortlink_domain}}/{{shortlink_url_path}}/${shortlink}"
+
+    echo "${url} | ${shortlink_url} | ${shortlink}"
   done)"
+
+search needle:
+  #!/usr/bin/env bash
+  needle="{{needle}}"
+
+  if [ -z "${needle}" ]; then
+    echo "Usage: just search <needle>"
+    exit 1
+  fi
+
+  just list | grep -i "${needle}" || echo "No shortlinks found for '${needle}'"
+
 
 add url:
   #!/usr/bin/env bash
   url="{{url}}"
 
-  shortlink="$(echo "${url}" | sha1sum | cut -c 1-8)"
+  if [ -z "${url}" ]; then
+    echo "Usage: just add <url>"
+    exit 1
+  fi
 
-  cat <<EOF > "_l/${shortlink}.md"
+  shortlink="$(cat /dev/urandom | tr -dc 'a-z' | fold -w 6 | head -n 1)"
+  shortlink_url="{{shortlink_domain}}/{{shortlink_url_path}}/${shortlink}"
+  shortlink_file="{{shortlink_dir}}/${shortlink}.md"
+
+  if [ -f "${shortlink_file}" ]; then
+    echo "Shortlink ${shortlink_file} already exists. Please try again."
+    exit 1
+  fi
+
+  cat <<EOF > "${shortlink_file}"
   ---
   goto: ${url}
   redirect_to: ${url}
   ---
   EOF
 
-  echo "${url} -> https://maxm.link/l/${shortlink}"
+  echo "${url} -> ${shortlink_url}"
 
-  git add _l
-  git commit -m "add: ${url} -> https://maxm.link/l/${shortlink}"
+  git add {{shortlink_dir}}
+  git commit -m "add: ${url} -> ${shortlink_url}"
   git push origin main
 
 
-remove shortlink:
+rm shortlink:
   #!/usr/bin/env bash
   shortlink="{{shortlink}}"
-  file="_l/${shortlink}.md"
-  if [ -f "${file}" ]; then
+
+  if [ -z "${shortlink}" ]; then
+    echo "Usage: just rm <shortlink>"
+    exit 1
+  fi
+
+  shortlink_file="{{shortlink_dir}}/${shortlink}.md"
+  if [ -f "${shortlink_file}" ]; then
     read -p "Are you sure you want to remove the shortlink '${shortlink}'? (y/n): " confirm
     if [[ "${confirm}" =~ ^[Yy]$ ]]; then
-      rm "${file}"
+      rm "${shortlink_file}"
       echo "Removed shortlink: ${shortlink}"
-      git add "${file}"
-      git commit -m "remove: ${shortlink}"
+      git add "${shortlink_file}"
+      git commit -m "remove: ${shortlink} -> ${shortlink_file}"
       git push origin main
     fi
   else
